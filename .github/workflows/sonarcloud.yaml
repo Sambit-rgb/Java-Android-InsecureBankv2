@@ -1,4 +1,4 @@
-name: Universal SonarCloud Analysis
+name: Universal SonarCloud Auto Scan
 
 on:
   push:
@@ -16,8 +16,24 @@ jobs:
 
     steps:
       # ✅ Checkout
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      # ✅ Generate dynamic project key
+      - name: Set project key
+        run: |
+          echo "PROJECT_KEY=sambit-rgb_${GITHUB_REPOSITORY##*/}" >> $GITHUB_ENV
+          echo "PROJECT_NAME=${GITHUB_REPOSITORY##*/}" >> $GITHUB_ENV
+
+      # ✅ Create SonarCloud project if not exists
+      - name: Create SonarCloud project (auto-onboard)
+        run: |
+          curl -u $SONAR_TOKEN: \
+          -X POST "https://sonarcloud.io/api/projects/create" \
+          -d "name=$PROJECT_NAME" \
+          -d "project=$PROJECT_KEY" \
+          -d "organization=sambit-rgb" || true
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
       # ✅ Detect project directory
       - name: Detect project directory
@@ -28,9 +44,8 @@ jobs:
             DIR=$(find . -maxdepth 2 -type f \( -name "pom.xml" -o -name "build.gradle" -o -name "gradlew" \) | head -n 1 | xargs dirname)
             echo "PROJECT_DIR=$DIR" >> $GITHUB_ENV
           fi
-          echo "Detected project dir: $PROJECT_DIR"
 
-      # ✅ Java 8 (safe for legacy projects)
+      # ✅ Java 8 (universal safe choice)
       - name: Set up JDK 8
         uses: actions/setup-java@v4
         with:
@@ -49,10 +64,9 @@ jobs:
           else
             echo "BUILD_TOOL=none" >> $GITHUB_ENV
           fi
-          echo "Detected build tool: $BUILD_TOOL"
 
       # ✅ Build (non-blocking)
-      - name: Build project (safe mode)
+      - name: Build project
         run: |
           cd $PROJECT_DIR
 
@@ -68,22 +82,21 @@ jobs:
             mvn clean install -DskipTests || true
 
           else
-            echo "No build tool detected"
+            echo "Skipping build"
           fi
 
       # ✅ Detect binaries
       - name: Detect binaries
         run: |
           BIN_PATH=$(find $PROJECT_DIR -type d \( -path "*/build/classes*" -o -path "*/target/classes*" \) | head -n 1)
-          
+
           if [ -z "$BIN_PATH" ]; then
             BIN_PATH="."
           fi
 
           echo "BINARIES=$BIN_PATH" >> $GITHUB_ENV
-          echo "Detected binaries: $BIN_PATH"
 
-      # ✅ SonarCloud analysis (FIXED)
+      # ✅ Run SonarCloud scan
       - name: Analyze with SonarCloud
         uses: SonarSource/sonarcloud-github-action@v2.2.0
         env:
@@ -93,7 +106,7 @@ jobs:
         with:
           projectBaseDir: .
           args: >
-            -Dsonar.projectKey=${{ github.repository }}
+            -Dsonar.projectKey=$PROJECT_KEY
             -Dsonar.organization=sambit-rgb
             -Dsonar.sources=$PROJECT_DIR
             -Dsonar.java.binaries=$BINARIES
