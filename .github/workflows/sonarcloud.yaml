@@ -20,14 +20,18 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Build project
-        run: ./gradlew assembleDebug
+      - name: Build Android project
+        run: |
+          cd InsecureBankv2
+          chmod +x gradlew
+          ./gradlew assembleDebug
 
       - name: Analyze with SonarCloud
         uses: SonarSource/sonarcloud-github-action@v2.2.0
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
+          projectBaseDir: InsecureBankv2
           args: >
             -Dsonar.projectKey=Sambit-rgb_Java-Android-InsecureBankv2
             -Dsonar.organization=sambit-rgb
